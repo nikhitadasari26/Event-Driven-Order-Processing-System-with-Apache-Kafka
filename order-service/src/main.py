@@ -12,7 +12,13 @@ from src.database import get_db, Order, OutboxEvent, SessionLocal
 from confluent_kafka import Producer
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+from pythonjsonlogger import jsonlogger
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+logHandler.setFormatter(formatter)
+logging.root.addHandler(logHandler)
+logging.root.setLevel(logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Order Service")

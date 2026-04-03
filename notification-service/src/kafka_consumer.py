@@ -4,6 +4,7 @@ import logging
 import time
 from confluent_kafka import Consumer, Producer
 from src.database import ProcessedEvent, SessionLocal
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,21 @@ def simulate_notification(topic, data):
         reason = data.get("reason", "unknown")
         logger.warning(f" >>> [NOTIFICATION SERVICE] Order FAILED alert. Reason: {reason} | OrderID: {order_id} | EventID: {event_id}")
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
+def process_message_with_retry(topic, data):
+    event_id = data.get("event_id")
+    
+    if not event_id:
+        logger.warning(f"Message missing event_id: {data}")
+        return
+    
+    # Idempotency Check
+    if is_processed(event_id):
+        logger.info(f"Notification for event {event_id} already sent. Skipping.", extra={"correlation_id": event_id})
+    else:
+        simulate_notification(topic, data)
+        mark_as_processed(event_id)
+
 def consume_notification_events():
     consumer = Consumer(consumer_conf)
     consumer.subscribe(TOPICS)
@@ -100,20 +116,7 @@ def consume_notification_events():
             
             try:
                 data = json.loads(msg_value)
-                event_id = data.get("event_id")
-                
-                if not event_id:
-                    logger.warning(f"Message missing event_id: {msg_value}")
-                    consumer.commit(asynchronous=False)
-                    continue
-                
-                # Idempotency Check
-                if is_processed(event_id):
-                    logger.info(f"Notification for event {event_id} already sent. Skipping.")
-                else:
-                    simulate_notification(topic, data)
-                    mark_as_processed(event_id)
-                
+                process_message_with_retry(topic, data)
                 consumer.commit(asynchronous=False)
                 
             except Exception as e:
