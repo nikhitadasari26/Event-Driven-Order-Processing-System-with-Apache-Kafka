@@ -145,10 +145,13 @@ def outbox_poller():
             db.close()
         time.sleep(1) # Poll every second
 
-if __name__ == "__main__":
-    import uvicorn
-    # Start poller in background
+@app.on_event("startup")
+def startup_event():
+    logger.info("FastAPI starting up. Initializing Outbox Poller...")
     poller_thread = threading.Thread(target=outbox_poller, daemon=True)
     poller_thread.start()
-    
+
+if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
